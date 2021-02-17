@@ -1,7 +1,5 @@
 import warnings
-import math
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union
@@ -33,7 +31,8 @@ def lp_loss(pred, tgt, p=2.0, reduction='none'):
 
 
 class UniformAffineQuantizer(nn.Module):
-    """ PyTorch Function that can be used for asymmetric quantization (also called uniform affine
+    """
+    PyTorch Function that can be used for asymmetric quantization (also called uniform affine
     quantization). Quantizes its argument in the forward pass, passes the gradient 'straight
     through' on the backward pass, ignoring the quantization that occurred.
     Based on https://arxiv.org/abs/1806.08342.
@@ -43,7 +42,8 @@ class UniformAffineQuantizer(nn.Module):
     :param channel_wise: if True, compute scale and zero_point in each channel
     :param scale_method: determines the quantization scale and zero point
     """
-    def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max'):
+    def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max',
+                 leaf_param: bool = False):
         super(UniformAffineQuantizer, self).__init__()
         self.sym = symmetric
         assert 2 <= n_bits <= 8, 'bitwidth not supported'
@@ -52,13 +52,20 @@ class UniformAffineQuantizer(nn.Module):
         self.delta = None
         self.zero_point = None
         self.inited = False
+        self.leaf_param = leaf_param
         self.channel_wise = channel_wise
         self.scale_method = scale_method
 
     def forward(self, x: torch.Tensor):
 
         if self.inited is False:
-            self.init_quantization_scale(x)
+            if self.leaf_param:
+                delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
+                self.delta = torch.nn.Parameter(torch.FloatTensor([delta]).type_as(x))
+                # self.zero_point = torch.nn.Parameter(self.zero_point)
+            else:
+                self.delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
+            self.inited = True
 
         # start quantization
         x_int = round_ste(x / self.delta) + self.zero_point
@@ -87,12 +94,12 @@ class UniformAffineQuantizer(nn.Module):
                 delta = delta.view(-1, 1)
                 zero_point = zero_point.view(-1, 1)
         else:
+            x_min = min(x.min().item(), 0)
+            x_max = max(x.max().item(), 0)
+            x_absmax = max(abs(x_min), x_max)
             if self.scale_method == 'max':
-                x_min = min(x.min().item(), 0)
-                x_max = max(x.max().item(), 0)
 
                 if self.sym:
-                    x_absmax = max(abs(x_min), x_max)
                     x_min, x_max = -x_absmax if x_min < 0 else 0, x_absmax
 
                 delta = float(x_max - x_min) / (self.n_levels - 1)
@@ -101,21 +108,24 @@ class UniformAffineQuantizer(nn.Module):
                     delta = 1e-8
 
                 zero_point = round(-x_min / delta)
-                # re-calculate the scale delta if zero-point is not 0
+                # re-calculate the scale delta if zero-point is not 0,
                 if zero_point != 0:
                     delta = -x_min / zero_point
+                # convert delta to tensor for further optimization
+                delta = torch.tensor(delta).type_as(x)
             elif self.scale_method == 'mse':
                 # we always use symmetric quantization in mse mode
-                x_absmax = x.abs().max()
                 best_score = 1000
                 for i in range(80):
                     new_max = x_absmax * (1.0 - (i * 0.01))
                     x_q = self.quantize(x, new_max)
+                    # L_p norm minimization as described in LAPQ
+                    # https://arxiv.org/abs/1911.07190
                     score = lp_loss(x, x_q, p=2.4, reduction='all')
                     if score < best_score:
                         best_score = score
                         delta = (2 * new_max) / (2 ** self.n_bits - 1)
-                        zero_point = (new_max / delta).round()
+                        zero_point = round(new_max / delta) if x_min < 0 else 0
             else:
                 raise NotImplementedError
 
@@ -123,11 +133,17 @@ class UniformAffineQuantizer(nn.Module):
 
     def quantize(self, x, max):
         delta = (2 * max) / (2 ** self.n_bits - 1)
-        zero_point = (max / delta).round()
+        # we assume weight quantization is always signed
+        zero_point = round(max / delta)
         x_int = torch.round(x / delta)
         x_quant = torch.clamp(x_int + zero_point, 0, 2 ** self.n_bits - 1)
         x_float_q = (x_quant - zero_point) * delta
         return x_float_q
+
+    def bitwidth_refactor(self, refactored_bit):
+        assert 2 <= refactored_bit <= 8, 'bitwidth not supported'
+        self.n_bits = refactored_bit
+        self.n_levels = 2 ** self.n_bits
 
 
 class QuantModule(nn.Module):
@@ -166,9 +182,11 @@ class QuantModule(nn.Module):
     def forward(self, input: torch.Tensor):
         if self.use_weight_quant:
             weight = self.weight_quantizer(self.weight)
+            bias = self.bias
         else:
             weight = self.org_weight
-        out = self.fwd_func(weight, input, **self.fwd_kwargs)
+            bias = self.org_bias
+        out = self.fwd_func(input, weight, bias, **self.fwd_kwargs)
         # disable act quantization is designed for convolution before elemental-wise operation,
         # in that case, we apply activation function and quantization after ele-wise op.
         if self.disable_act_quant:

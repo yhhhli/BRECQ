@@ -8,10 +8,9 @@ class QuantModel(nn.Module):
 
     def __init__(self, model: nn.Module, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         super().__init__()
+        search_fold_and_remove_bn(model)
         self.model = model
-        search_fold_and_remove_bn(self.model)
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
-        self.use_spike = False
 
     def quant_module_refactor(self, module: nn.Module, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         """
@@ -25,7 +24,7 @@ class QuantModel(nn.Module):
             if type(child_module) in specials:
                 setattr(module, name, specials[type(child_module)](child_module, weight_quant_params, act_quant_params))
 
-            elif isinstance(child_module, nn.Conv2d):
+            elif isinstance(child_module, (nn.Conv2d, nn.Linear)):
                 setattr(module, name, QuantModule(child_module, weight_quant_params, act_quant_params))
                 prev_quantmodule = getattr(module, name)
 
@@ -50,3 +49,19 @@ class QuantModel(nn.Module):
     def forward(self, input):
         return self.model(input)
 
+    def set_first_last_layer_to_8bit(self):
+        module_list = []
+        for m in self.model.modules():
+            if isinstance(m, QuantModule):
+                module_list += [m]
+        module_list[0].weight_quantizer.bitwidth_refactor(8)
+        module_list[0].act_quantizer.bitwidth_refactor(8)
+        module_list[-1].weight_quantizer.bitwidth_refactor(8)
+        module_list[-2].act_quantizer.bitwidth_refactor(8)
+
+    def disable_network_output_quantization(self):
+        module_list = []
+        for m in self.model.modules():
+            if isinstance(m, QuantModule):
+                module_list += [m]
+        module_list[-1].disable_act_quant = True

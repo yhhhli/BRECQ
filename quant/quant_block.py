@@ -27,6 +27,9 @@ class BaseQuantBlock(nn.Module):
         # setting weight quantization here does not affect actual forward pass
         self.use_weight_quant = weight_quant
         self.use_act_quant = act_quant
+        for m in self.modules():
+            if isinstance(m, QuantModule):
+                m.set_quant_state(weight_quant, act_quant)
 
 
 class QuantBasicBlock(BaseQuantBlock):
@@ -36,16 +39,16 @@ class QuantBasicBlock(BaseQuantBlock):
     def __init__(self, basic_block: BasicBlock, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         super().__init__(act_quant_params)
         self.conv1 = QuantModule(basic_block.conv1, weight_quant_params, act_quant_params)
-        self.conv1.activation_function = basic_block.relu
-        self.conv2 = QuantModule(basic_block.conv1, weight_quant_params, act_quant_params, disable_act_quant=True)
+        self.conv1.activation_function = basic_block.relu1
+        self.conv2 = QuantModule(basic_block.conv2, weight_quant_params, act_quant_params, disable_act_quant=True)
 
         # modify the activation function to ReLU
-        self.activation_function = basic_block.relu
+        self.activation_function = basic_block.relu2
 
         if basic_block.downsample is None:
             self.downsample = None
         else:
-            self.downsample = QuantModule(basic_block.downsample[0], weight_quant_params, act_quant_params)
+            self.downsample = QuantModule(basic_block.downsample[0], weight_quant_params, act_quant_params, disable_act_quant=True)
         # copying all attributes in original block
         self.stride = basic_block.stride
 
@@ -68,13 +71,13 @@ class QuantBottleneck(BaseQuantBlock):
     def __init__(self, bottleneck: Bottleneck, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         super().__init__(act_quant_params)
         self.conv1 = QuantModule(bottleneck.conv1, weight_quant_params, act_quant_params)
-        self.conv1.activation_function = bottleneck.relu
+        self.conv1.activation_function = bottleneck.relu1
         self.conv2 = QuantModule(bottleneck.conv2, weight_quant_params, act_quant_params)
-        self.conv2.activation_function = bottleneck.relu
+        self.conv2.activation_function = bottleneck.relu2
         self.conv3 = QuantModule(bottleneck.conv3, weight_quant_params, act_quant_params, disable_act_quant=True)
 
         # modify the activation function to ReLU
-        self.activation_function = bottleneck.relu
+        self.activation_function = bottleneck.relu3
 
         if bottleneck.downsample is None:
             self.downsample = None
