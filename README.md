@@ -16,7 +16,7 @@ url={https://openreview.net/forum?id=POWv6hDd9XH}
 
 ## Pretrained models
 
-We provide all the pretrained models and they can accessed via  ```torch.hub```
+We provide all the pretrained models and they can be accessed via  ```torch.hub```
 
 For example: use ```res18 = torch.hub.load('yhhhli/BRECQ', model='resnet18', pretrained=True)``` to get the pretrained ResNet-18 model.
 
