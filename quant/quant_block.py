@@ -23,6 +23,8 @@ class BaseQuantBlock(nn.Module):
         self.act_quantizer = UniformAffineQuantizer(**act_quant_params)
         self.activation_function = StraightThrough()
 
+        self.ignore_reconstruction = False
+
     def set_quant_state(self, weight_quant: bool = False, act_quant: bool = False):
         # setting weight quantization here does not affect actual forward pass
         self.use_weight_quant = weight_quant
@@ -34,7 +36,7 @@ class BaseQuantBlock(nn.Module):
 
 class QuantBasicBlock(BaseQuantBlock):
     """
-    Implementation of Quantized BasicBlock that used in ResNet-18 and ResNet-34.
+    Implementation of Quantized BasicBlock used in ResNet-18 and ResNet-34.
     """
     def __init__(self, basic_block: BasicBlock, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         super().__init__(act_quant_params)
@@ -48,7 +50,8 @@ class QuantBasicBlock(BaseQuantBlock):
         if basic_block.downsample is None:
             self.downsample = None
         else:
-            self.downsample = QuantModule(basic_block.downsample[0], weight_quant_params, act_quant_params, disable_act_quant=True)
+            self.downsample = QuantModule(basic_block.downsample[0], weight_quant_params, act_quant_params,
+                                          disable_act_quant=True)
         # copying all attributes in original block
         self.stride = basic_block.stride
 
@@ -65,7 +68,7 @@ class QuantBasicBlock(BaseQuantBlock):
 
 class QuantBottleneck(BaseQuantBlock):
     """
-    Implementation of Quantized Bottleneck Block that used in ResNet-50, -101 and -152.
+    Implementation of Quantized Bottleneck Block used in ResNet-50, -101 and -152.
     """
 
     def __init__(self, bottleneck: Bottleneck, weight_quant_params: dict = {}, act_quant_params: dict = {}):
@@ -82,7 +85,8 @@ class QuantBottleneck(BaseQuantBlock):
         if bottleneck.downsample is None:
             self.downsample = None
         else:
-            self.downsample = QuantModule(bottleneck.downsample[0], weight_quant_params, act_quant_params)
+            self.downsample = QuantModule(bottleneck.downsample[0], weight_quant_params, act_quant_params,
+                                          disable_act_quant=True)
         # copying all attributes in original block
         self.stride = bottleneck.stride
 
@@ -100,7 +104,7 @@ class QuantBottleneck(BaseQuantBlock):
 
 class QuantResBottleneckBlock(BaseQuantBlock):
     """
-    Implementation of Quantized Bottleneck Block that used in RegNetX (no SE module).
+    Implementation of Quantized Bottleneck Blockused in RegNetX (no SE module).
     """
 
     def __init__(self, bottleneck: ResBottleneckBlock, weight_quant_params: dict = {}, act_quant_params: dict = {}):
@@ -115,7 +119,8 @@ class QuantResBottleneckBlock(BaseQuantBlock):
         self.activation_function = bottleneck.relu
 
         if bottleneck.proj_block:
-            self.downsample = QuantModule(bottleneck.proj, weight_quant_params, act_quant_params)
+            self.downsample = QuantModule(bottleneck.proj, weight_quant_params, act_quant_params,
+                                          disable_act_quant=True)
         else:
             self.downsample = None
         # copying all attributes in original block
@@ -135,7 +140,7 @@ class QuantResBottleneckBlock(BaseQuantBlock):
 
 class QuantInvertedResidual(BaseQuantBlock):
     """
-    Implementation of Quantized Inverted Residual Block that used in MobileNetV2.
+    Implementation of Quantized Inverted Residual Block used in MobileNetV2.
     Inverted Residual does not have activation function.
     """
 
@@ -149,15 +154,15 @@ class QuantInvertedResidual(BaseQuantBlock):
                 QuantModule(inv_res.conv[0], weight_quant_params, act_quant_params),
                 QuantModule(inv_res.conv[3], weight_quant_params, act_quant_params, disable_act_quant=True),
             )
-            self.conv[0].activation_function = inv_res.conv[2]
+            self.conv[0].activation_function = nn.ReLU6()
         else:
             self.conv = nn.Sequential(
                 QuantModule(inv_res.conv[0], weight_quant_params, act_quant_params),
                 QuantModule(inv_res.conv[3], weight_quant_params, act_quant_params),
                 QuantModule(inv_res.conv[6], weight_quant_params, act_quant_params, disable_act_quant=True),
             )
-            self.conv[0].activation_function = inv_res.conv[2]
-            self.conv[1].activation_function = inv_res.conv[5]
+            self.conv[0].activation_function = nn.ReLU6()
+            self.conv[1].activation_function = nn.ReLU6()
 
     def forward(self, x):
         if self.use_res_connect:

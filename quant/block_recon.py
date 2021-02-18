@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from quant.quant_layer import QuantModule, StraightThrough, lp_loss
 from quant.quant_model import QuantModel
@@ -10,7 +9,7 @@ from quant.data_utils import save_grad_data, save_inp_oup_data
 def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: torch.Tensor,
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.01,
                          opt_mode: str = 'mse', asym: bool = False, include_act_func: bool = True,
-                         b_range: tuple = (20, 2), warmup: float = 0.0, act_quant: bool = False):
+                         b_range: tuple = (20, 2), warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -26,8 +25,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     :param b_range: temperature range
     :param warmup: proportion of iterations that no scheduling for temperature
     :param act_quant: use activation quantization or not.
+    :param lr: learning rate for act delta learning
     """
-
     model.set_quant_state(False, False)
     block.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
@@ -36,20 +35,23 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         org_act_func = block.activation_function
         block.activation_function = StraightThrough()
 
-    # Replace weight quantizer to AdaRoundQuantizer
-    for name, module in block.named_modules():
-        if isinstance(module, QuantModule):
-            module.weight_quantizer = AdaRoundQuantizer(uaq=module.weight_quantizer, round_mode=round_mode,
-                                                        weight_tensor=module.org_weight.data)
-            module.weight_quantizer.soft_targets = True
+    if not act_quant:
+        # Replace weight quantizer to AdaRoundQuantizer
+        for name, module in block.named_modules():
+            if isinstance(module, QuantModule):
+                module.weight_quantizer = AdaRoundQuantizer(uaq=module.weight_quantizer, round_mode=round_mode,
+                                                            weight_tensor=module.org_weight.data)
+                module.weight_quantizer.soft_targets = True
 
-    # Set up optimizer
-    opt_params = []
-    for name, module in block.named_modules():
-        if isinstance(module, QuantModule):
-            opt_params += [module.weight_quantizer.alpha]
-    optimizer = torch.optim.Adam(opt_params)
-    if act_quant:
+        # Set up optimizer
+        opt_params = []
+        for name, module in block.named_modules():
+            if isinstance(module, QuantModule):
+                opt_params += [module.weight_quantizer.alpha]
+        optimizer = torch.optim.Adam(opt_params)
+        scheduler = None
+    else:
+        # Use UniformAffineQuantizer to learn delta
         if hasattr(block.act_quantizer, 'delta'):
             opt_params = [block.act_quantizer.delta]
         else:
@@ -58,13 +60,10 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
             if isinstance(module, QuantModule):
                 if module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
-        optimizer2 = torch.optim.Adam(opt_params, lr=4e-5)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer2, T_max=iters, eta_min=0.)
-    else:
-        optimizer2 = None
-        scheduler = None
+        optimizer = torch.optim.Adam(opt_params, lr=lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=0.)
 
-    loss_mode = 'relaxation'
+    loss_mode = 'none' if act_quant else 'relaxation'
     rec_loss = opt_mode
 
     loss_func = LossFunction(block, round_loss=loss_mode, weight=weight, max_count=iters, rec_loss=rec_loss,
@@ -72,25 +71,24 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
 
     # Save data before optimizing the rounding
     cached_inps, cached_outs = save_inp_oup_data(model, block, cali_data, asym, act_quant, batch_size)
-    cached_grads = save_grad_data(model, block, cali_data, act_quant, batch_size=batch_size)
+    if opt_mode != 'mse':
+        cached_grads = save_grad_data(model, block, cali_data, act_quant, batch_size=batch_size)
+    else:
+        cached_grads = None
     device = 'cuda'
     for i in range(iters):
         idx = torch.randperm(cached_inps.size(0))[:batch_size]
         cur_inp = cached_inps[idx].to(device)
         cur_out = cached_outs[idx].to(device)
-        cur_grad = cached_grads[idx].to(device)
+        cur_grad = cached_grads[idx].to(device) if opt_mode != 'mse' else None
 
         optimizer.zero_grad()
-        if optimizer2 is not None:
-            optimizer2.zero_grad()
         out_quant = block(cur_inp)
 
         err = loss_func(out_quant, cur_out, cur_grad)
 
         err.backward(retain_graph=True)
         optimizer.step()
-        if optimizer2:
-            optimizer2.step()
         if scheduler:
             scheduler.step()
 
@@ -154,7 +152,7 @@ class LossFunction:
             raise ValueError('Not supported reconstruction loss function: {}'.format(self.rec_loss))
 
         b = self.temp_decay(self.count)
-        if self.count < self.loss_start or self.round_loss is None:
+        if self.count < self.loss_start or self.round_loss == 'none':
             b = round_loss = 0
         elif self.round_loss == 'relaxation':
             round_loss = 0

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from quant.quant_layer import QuantModule, StraightThrough, lp_loss
 from quant.quant_model import QuantModel
@@ -10,7 +9,7 @@ from quant.data_utils import save_grad_data, save_inp_oup_data
 def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch.Tensor,
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.001,
                          opt_mode: str = 'mse', asym: bool = False, include_act_func: bool = True,
-                         b_range: tuple = (20, 2), warmup: float = 0.0, act_quant: bool = False):
+                         b_range: tuple = (20, 2), warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5):
     """
     Block reconstruction to optimize the output from each layer.
 
@@ -26,6 +25,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     :param b_range: temperature range
     :param warmup: proportion of iterations that no scheduling for temperature
     :param act_quant: use activation quantization or not.
+    :param lr: learning rate for act delta learning
     """
 
     model.set_quant_state(False, False)
@@ -36,23 +36,23 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         org_act_func = layer.activation_function
         layer.activation_function = StraightThrough()
 
-    # Replace weight quantizer to AdaRoundQuantizer
-    layer.weight_quantizer = AdaRoundQuantizer(uaq=layer.weight_quantizer, round_mode=round_mode,
-                                               weight_tensor=layer.org_weight.data)
-    layer.weight_quantizer.soft_targets = True
+    if not act_quant:
+        # Replace weight quantizer to AdaRoundQuantizer
+        layer.weight_quantizer = AdaRoundQuantizer(uaq=layer.weight_quantizer, round_mode=round_mode,
+                                                   weight_tensor=layer.org_weight.data)
+        layer.weight_quantizer.soft_targets = True
 
-    # Set up optimizer
-    opt_params = [layer.weight_quantizer.alpha]
-    optimizer = torch.optim.Adam(opt_params)
-    if act_quant:
-        opt_params = [layer.act_quantizer.delta]
-        optimizer2 = torch.optim.Adam(opt_params, lr=4e-5)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer2, T_max=iters, eta_min=0.)
-    else:
-        optimizer2 = None
+        # Set up optimizer
+        opt_params = [layer.weight_quantizer.alpha]
+        optimizer = torch.optim.Adam(opt_params)
         scheduler = None
+    else:
+        # Use UniformAffineQuantizer to learn delta
+        opt_params = [layer.act_quantizer.delta]
+        optimizer = torch.optim.Adam(opt_params, lr=lr)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=0.)
 
-    loss_mode = 'relaxation'
+    loss_mode = 'none' if act_quant else 'relaxation'
     rec_loss = opt_mode
 
     loss_func = LossFunction(layer, round_loss=loss_mode, weight=weight,
@@ -73,16 +73,12 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
 
         optimizer.zero_grad()
-        if optimizer2 is not None:
-            optimizer2.zero_grad()
         out_quant = layer(cur_inp)
 
         err = loss_func(out_quant, cur_out, cur_grad)
 
         err.backward(retain_graph=True)
         optimizer.step()
-        if optimizer2:
-            optimizer2.step()
         if scheduler:
             scheduler.step()
 
@@ -144,7 +140,7 @@ class LossFunction:
             raise ValueError('Not supported reconstruction loss function: {}'.format(self.rec_loss))
 
         b = self.temp_decay(self.count)
-        if self.count < self.loss_start or self.round_loss is None:
+        if self.count < self.loss_start or self.round_loss == 'none':
             b = round_loss = 0
         elif self.round_loss == 'relaxation':
             round_loss = 0

@@ -61,7 +61,7 @@ class UniformAffineQuantizer(nn.Module):
         if self.inited is False:
             if self.leaf_param:
                 delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
-                self.delta = torch.nn.Parameter(torch.FloatTensor([delta]).type_as(x))
+                self.delta = torch.nn.Parameter(delta)
                 # self.zero_point = torch.nn.Parameter(self.zero_point)
             else:
                 self.delta, self.zero_point = self.init_quantization_scale(x, self.channel_wise)
@@ -108,13 +108,10 @@ class UniformAffineQuantizer(nn.Module):
                     delta = 1e-8
 
                 zero_point = round(-x_min / delta)
-                # re-calculate the scale delta if zero-point is not 0,
-                if zero_point != 0:
-                    delta = -x_min / zero_point
-                # convert delta to tensor for further optimization
-                delta = torch.tensor(delta).type_as(x)
+
             elif self.scale_method == 'mse':
                 # we always use symmetric quantization in mse mode
+                x_absmax = x.abs().max()
                 best_score = 1000
                 for i in range(80):
                     new_max = x_absmax * (1.0 - (i * 0.01))
@@ -125,7 +122,8 @@ class UniformAffineQuantizer(nn.Module):
                     if score < best_score:
                         best_score = score
                         delta = (2 * new_max) / (2 ** self.n_bits - 1)
-                        zero_point = round(new_max / delta) if x_min < 0 else 0
+                        zero_point = (new_max / delta).round() if x_min < 0 else 0
+                        # re-calculate the scale delta if zero-point is not 0,
             else:
                 raise NotImplementedError
 
@@ -134,13 +132,13 @@ class UniformAffineQuantizer(nn.Module):
     def quantize(self, x, max):
         delta = (2 * max) / (2 ** self.n_bits - 1)
         # we assume weight quantization is always signed
-        zero_point = round(max / delta)
+        zero_point = (max / delta).round()
         x_int = torch.round(x / delta)
-        x_quant = torch.clamp(x_int + zero_point, 0, 2 ** self.n_bits - 1)
+        x_quant = torch.clamp(x_int + zero_point, 0, self.n_levels - 1)
         x_float_q = (x_quant - zero_point) * delta
         return x_float_q
 
-    def bitwidth_refactor(self, refactored_bit):
+    def bitwidth_refactor(self, refactored_bit: int):
         assert 2 <= refactored_bit <= 8, 'bitwidth not supported'
         self.n_bits = refactored_bit
         self.n_levels = 2 ** self.n_bits
@@ -178,6 +176,7 @@ class QuantModule(nn.Module):
         self.act_quantizer = UniformAffineQuantizer(**act_quant_params)
 
         self.activation_function = StraightThrough()
+        self.ignore_reconstruction = False
 
     def forward(self, input: torch.Tensor):
         if self.use_weight_quant:
