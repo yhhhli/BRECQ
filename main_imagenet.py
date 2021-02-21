@@ -162,8 +162,9 @@ if __name__ == '__main__':
     parser.add_argument('--step', default=20, type=int, help='record snn output per step')
 
     # activation calibration parameters
-    parser.add_argument('--iters_a', default=4000, type=int, help='number of iteration for LSQ')
-    parser.add_argument('--lr', default=4e-5, type=float, help='learning rate for LSQ')
+    parser.add_argument('--iters_a', default=5000, type=int, help='number of iteration for LSQ')
+    parser.add_argument('--lr', default=4e-4, type=float, help='learning rate for LSQ')
+    parser.add_argument('--p', default=2.4, type=float, help='L_p norm minimization for LSQ')
 
     args = parser.parse_args()
 
@@ -236,7 +237,7 @@ if __name__ == '__main__':
         # does not get involved in further computation
         qnn.disable_network_output_quantization()
         # Kwargs for activation rounding calibration
-        kwargs = dict(cali_data=cali_data, iters=args.iters_a, act_quant=True, opt_mode='mse', lr=args.lr)
+        kwargs = dict(cali_data=cali_data, iters=args.iters_a, act_quant=True, opt_mode='mse', lr=args.lr, p=args.p)
         recon_model(qnn)
         qnn.set_quant_state(weight_quant=True, act_quant=True)
         print('Full quantization (W{}A{}) accuracy: {}'.format(args.n_bits_w, args.n_bits_a,

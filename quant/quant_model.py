@@ -58,7 +58,7 @@ class QuantModel(nn.Module):
         module_list[0].act_quantizer.bitwidth_refactor(8)
         module_list[-1].weight_quantizer.bitwidth_refactor(8)
         module_list[-2].act_quantizer.bitwidth_refactor(8)
-        # ignore reconstruction of the 8-bit layer
+        # ignore reconstruction of the first layer
         module_list[0].ignore_reconstruction = True
 
     def disable_network_output_quantization(self):

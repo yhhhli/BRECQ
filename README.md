@@ -3,8 +3,8 @@ Pytorch implementation of BRECQ, ICLR 2021
 
 ```latex
 @inproceedings{
-li2021brecq,
-title={{\{}BRECQ{\}}: Pushing the Limit of Post-Training Quantization by Block Reconstruction},
+li&gong2021brecq,
+title={BRECQ: Pushing the Limit of Post-Training Quantization by Block Reconstruction},
 author={Yuhang Li and Ruihao Gong and Xu Tan and Yang Yang and Peng Hu and Qi Zhang and Fengwei Yu and Wei Wang and Shi Gu},
 booktitle={International Conference on Learning Representations},
 year={2021},
@@ -40,9 +40,7 @@ You can get the following output:
 
 ```bash
 Quantized accuracy before brecq: 0.13599999248981476
-Weight quantization accuracy: 66.2760009765625
-Full quantization (W2A4) accuracy: 65.00599670410156
+Weight quantization accuracy: 66.32799530029297
+Full quantization (W2A4) accuracy: 65.21199798583984
 ```
-
-
 

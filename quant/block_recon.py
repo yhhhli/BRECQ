@@ -7,9 +7,9 @@ from quant.data_utils import save_grad_data, save_inp_oup_data
 
 
 def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: torch.Tensor,
-                         batch_size: int = 32, iters: int = 20000, weight: float = 0.01,
-                         opt_mode: str = 'mse', asym: bool = False, include_act_func: bool = True,
-                         b_range: tuple = (20, 2), warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5):
+                         batch_size: int = 32, iters: int = 20000, weight: float = 0.01, opt_mode: str = 'mse',
+                         asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
+                         warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -26,6 +26,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     :param warmup: proportion of iterations that no scheduling for temperature
     :param act_quant: use activation quantization or not.
     :param lr: learning rate for act delta learning
+    :param p: L_p norm minimization
     """
     model.set_quant_state(False, False)
     block.set_quant_state(True, act_quant)
@@ -67,7 +68,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     rec_loss = opt_mode
 
     loss_func = LossFunction(block, round_loss=loss_mode, weight=weight, max_count=iters, rec_loss=rec_loss,
-                             b_range=b_range, decay_start=0, warmup=warmup)
+                             b_range=b_range, decay_start=0, warmup=warmup, p=p)
 
     # Save data before optimizing the rounding
     cached_inps, cached_outs = save_inp_oup_data(model, block, cali_data, asym, act_quant, batch_size)

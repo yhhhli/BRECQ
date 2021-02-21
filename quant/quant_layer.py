@@ -94,11 +94,14 @@ class UniformAffineQuantizer(nn.Module):
                 delta = delta.view(-1, 1)
                 zero_point = zero_point.view(-1, 1)
         else:
-            x_min = min(x.min().item(), 0)
-            x_max = max(x.max().item(), 0)
-            x_absmax = max(abs(x_min), x_max)
-            if self.scale_method == 'max':
+            if 'max' in self.scale_method:
+                x_min = min(x.min().item(), 0)
+                x_max = max(x.max().item(), 0)
+                if 'scale' in self.scale_method:
+                    x_min = x_min * (self.n_bits + 2) / 8
+                    x_max = x_max * (self.n_bits + 2) / 8
 
+                x_absmax = max(abs(x_min), x_max)
                 if self.sym:
                     x_min, x_max = -x_absmax if x_min < 0 else 0, x_absmax
 
@@ -108,10 +111,12 @@ class UniformAffineQuantizer(nn.Module):
                     delta = 1e-8
 
                 zero_point = round(-x_min / delta)
+                delta = torch.tensor(delta).type_as(x)
 
             elif self.scale_method == 'mse':
                 # we always use symmetric quantization in mse mode
                 x_absmax = x.abs().max()
+                x_min = x.min().item()
                 best_score = 1000
                 for i in range(80):
                     new_max = x_absmax * (1.0 - (i * 0.01))
@@ -143,6 +148,11 @@ class UniformAffineQuantizer(nn.Module):
         self.n_bits = refactored_bit
         self.n_levels = 2 ** self.n_bits
 
+    def extra_repr(self):
+        s = 'bit={n_bits}, scale_method={scale_method}, symmetric={symmetric}, channel_wise={channel_wise},' \
+            ' leaf_param={leaf_param}'
+        return s.format(**self.__dict__)
+
 
 class QuantModule(nn.Module):
     """
@@ -153,11 +163,11 @@ class QuantModule(nn.Module):
                  act_quant_params: dict = {}, disable_act_quant: bool = False):
         super(QuantModule, self).__init__()
         if isinstance(org_module, nn.Conv2d):
-            self.fwd_kwargs = {"stride": org_module.stride, "padding": org_module.padding,
-                               "dilation": org_module.dilation, "groups": org_module.groups}
+            self.fwd_kwargs = dict(stride=org_module.stride, padding=org_module.padding,
+                                   dilation=org_module.dilation, groups=org_module.groups)
             self.fwd_func = F.conv2d
         else:
-            self.fwd_kwargs = {}
+            self.fwd_kwargs = dict()
             self.fwd_func = F.linear
         self.weight = org_module.weight
         self.org_weight = org_module.weight.data.clone()
