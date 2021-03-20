@@ -2,13 +2,11 @@
 Pytorch implementation of BRECQ, ICLR 2021
 
 ```latex
-@inproceedings{
-li&gong2021brecq,
-title={BRECQ: Pushing the Limit of Post-Training Quantization by Block Reconstruction},
-author={Yuhang Li and Ruihao Gong and Xu Tan and Yang Yang and Peng Hu and Qi Zhang and Fengwei Yu and Wei Wang and Shi Gu},
-booktitle={International Conference on Learning Representations},
-year={2021},
-url={https://openreview.net/forum?id=POWv6hDd9XH}
+@article{li2021brecq,
+  title={BRECQ: Pushing the Limit of Post-Training Quantization by Block Reconstruction},
+  author={Li, Yuhang and Gong, Ruihao and Tan, Xu and Yang, Yang and Hu, Peng and Zhang, Qi and Yu, Fengwei and Wang, Wei and Gu, Shi},
+  journal={arXiv preprint arXiv:2102.05426},
+  year={2021}
 }
 ```
 
