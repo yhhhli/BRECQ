@@ -17,7 +17,7 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
-            transforms.Resize((256, 256)),
+            transforms.Resize(256),
             transforms.RandomCrop(input_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -29,7 +29,7 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
         num_workers=workers, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize((256, 256)),
+            transforms.Resize(256),
             transforms.CenterCrop(input_size),
             transforms.ToTensor(),
             normalize,
