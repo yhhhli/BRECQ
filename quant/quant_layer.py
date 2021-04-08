@@ -149,7 +149,7 @@ class UniformAffineQuantizer(nn.Module):
         self.n_levels = 2 ** self.n_bits
 
     def extra_repr(self):
-        s = 'bit={n_bits}, scale_method={scale_method}, symmetric={symmetric}, channel_wise={channel_wise},' \
+        s = 'bit={n_bits}, scale_method={scale_method}, symmetric={sym}, channel_wise={channel_wise},' \
             ' leaf_param={leaf_param}'
         return s.format(**self.__dict__)
 
