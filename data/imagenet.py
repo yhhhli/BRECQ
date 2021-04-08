@@ -17,8 +17,7 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
-            transforms.Resize(256),
-            transforms.RandomCrop(input_size),
+            transforms.RandomResizedCrop(input_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
