@@ -42,3 +42,11 @@ Weight quantization accuracy: 66.32799530029297
 Full quantization (W2A4) accuracy: 65.21199798583984
 ```
 
+MobileNetV2 Quantization:
+
+```bash
+python main_imagenet.py --data_path PATN/TO/DATA --arch mobilenetv2 --n_bits_w 2 --channel_wise --weight 0.1
+```
+
+Results: `Weight quantization accuracy: 59.48799896240234`
+
