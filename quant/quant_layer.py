@@ -114,30 +114,29 @@ class UniformAffineQuantizer(nn.Module):
                 delta = torch.tensor(delta).type_as(x)
 
             elif self.scale_method == 'mse':
-                # we always use symmetric quantization in mse mode
-                x_absmax = x.abs().max()
-                x_min = x.min().item()
-                best_score = 1000
+                x_max = x.max()
+                x_min = x.min()
+                best_score = 1e+10
                 for i in range(80):
-                    new_max = x_absmax * (1.0 - (i * 0.01))
-                    x_q = self.quantize(x, new_max)
+                    new_max = x_max * (1.0 - (i * 0.01))
+                    new_min = x_min * (1.0 - (i * 0.01))
+                    x_q = self.quantize(x, new_max, new_min)
                     # L_p norm minimization as described in LAPQ
                     # https://arxiv.org/abs/1911.07190
                     score = lp_loss(x, x_q, p=2.4, reduction='all')
                     if score < best_score:
                         best_score = score
-                        delta = (2 * new_max) / (2 ** self.n_bits - 1)
-                        zero_point = (new_max / delta).round() if x_min < 0 else 0
-                        # re-calculate the scale delta if zero-point is not 0,
+                        delta = (new_max - new_min) / (2 ** self.n_bits - 1)
+                        zero_point = (- new_min / delta).round()
             else:
                 raise NotImplementedError
 
         return delta, zero_point
 
-    def quantize(self, x, max):
-        delta = (2 * max) / (2 ** self.n_bits - 1)
+    def quantize(self, x, max, min):
+        delta = (max - min) / (2 ** self.n_bits - 1)
+        zero_point = (- min / delta).round()
         # we assume weight quantization is always signed
-        zero_point = (max / delta).round()
         x_int = torch.round(x / delta)
         x_quant = torch.clamp(x_int + zero_point, 0, self.n_levels - 1)
         x_float_q = (x_quant - zero_point) * delta
@@ -160,7 +159,7 @@ class QuantModule(nn.Module):
     To activate quantization, please use set_quant_state function.
     """
     def __init__(self, org_module: Union[nn.Conv2d, nn.Linear], weight_quant_params: dict = {},
-                 act_quant_params: dict = {}, disable_act_quant: bool = False):
+                 act_quant_params: dict = {}, disable_act_quant: bool = False, se_module=None):
         super(QuantModule, self).__init__()
         if isinstance(org_module, nn.Conv2d):
             self.fwd_kwargs = dict(stride=org_module.stride, padding=org_module.padding,
@@ -188,6 +187,9 @@ class QuantModule(nn.Module):
         self.activation_function = StraightThrough()
         self.ignore_reconstruction = False
 
+        self.se_module = se_module
+        self.extra_repr = org_module.extra_repr
+
     def forward(self, input: torch.Tensor):
         if self.use_weight_quant:
             weight = self.weight_quantizer(self.weight)
@@ -198,9 +200,11 @@ class QuantModule(nn.Module):
         out = self.fwd_func(input, weight, bias, **self.fwd_kwargs)
         # disable act quantization is designed for convolution before elemental-wise operation,
         # in that case, we apply activation function and quantization after ele-wise op.
+        if self.se_module is not None:
+            out = self.se_module(out)
+        out = self.activation_function(out)
         if self.disable_act_quant:
             return out
-        out = self.activation_function(out)
         if self.use_act_quant:
             out = self.act_quantizer(out)
         return out

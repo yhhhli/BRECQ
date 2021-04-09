@@ -154,7 +154,7 @@ if __name__ == '__main__':
     # weight calibration parameters
     parser.add_argument('--num_samples', default=1024, type=int, help='size of the calibration dataset')
     parser.add_argument('--iters_w', default=20000, type=int, help='number of iteration for adaround')
-    parser.add_argument('--weight', default=0.01, type=int, help='weight of rounding cost vs the reconstruction loss.')
+    parser.add_argument('--weight', default=0.01, type=float, help='weight of rounding cost vs the reconstruction loss.')
     parser.add_argument('--sym', action='store_true', help='symmetric reconstruction, not recommended')
     parser.add_argument('--b_start', default=20, type=int, help='temperature at the beginning of calibration')
     parser.add_argument('--b_end', default=2, type=int, help='temperature at the end of calibration')

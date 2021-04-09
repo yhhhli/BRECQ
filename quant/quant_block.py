@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from quant.quant_layer import QuantModule, UniformAffineQuantizer, StraightThrough
 from models.resnet import BasicBlock, Bottleneck
@@ -179,5 +180,5 @@ specials = {
     BasicBlock: QuantBasicBlock,
     Bottleneck: QuantBottleneck,
     ResBottleneckBlock: QuantResBottleneckBlock,
-    InvertedResidual: QuantInvertedResidual
+    InvertedResidual: QuantInvertedResidual,
 }

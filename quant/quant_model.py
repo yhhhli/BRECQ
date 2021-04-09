@@ -67,3 +67,4 @@ class QuantModel(nn.Module):
             if isinstance(m, QuantModule):
                 module_list += [m]
         module_list[-1].disable_act_quant = True
+
