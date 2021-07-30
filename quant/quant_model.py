@@ -68,3 +68,10 @@ class QuantModel(nn.Module):
                 module_list += [m]
         module_list[-1].disable_act_quant = True
 
+    def synchorize_activation_statistics(self):
+        import linklink.dist_helper as dist
+        for m in self.modules():
+            if isinstance(m, QuantModule):
+                if m.act_quantizer.delta is not None:
+                    dist.allaverage(m.act_quantizer.delta)
+

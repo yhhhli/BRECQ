@@ -12,6 +12,22 @@ Pytorch implementation of BRECQ, ICLR 2021
 
 
 
+## Update (Jul 30): Add Multi-GPU Reconstruction
+
+We release the code for multi-GPU reconstruction. 
+
+Note that this cannot be simply performed with `torch.nn.DataParallel` or DDP. To synchorize the gradients, activation scale, etc., we have to manully call `torch.cuda.allreduce`. 
+
+The first step is to initialize the distributed envrionment, and then use distributed sampler for data loading. 
+
+Please use `main_imagenet_dist` for multi-GPU reconstruction. With this, you can reconstruct larger models and use more data samples!
+
+```bash
+python -m main_imagenet_dist **KWARGS_FOR_RECON
+```
+
+
+
 ## Pretrained models
 
 We provide all the pretrained models and they can be accessed via  ```torch.hub```

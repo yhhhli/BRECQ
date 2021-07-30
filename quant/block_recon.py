@@ -1,4 +1,5 @@
 import torch
+import linklink as link
 from quant.quant_layer import QuantModule, StraightThrough, lp_loss
 from quant.quant_model import QuantModel
 from quant.quant_block import BaseQuantBlock
@@ -9,7 +10,8 @@ from quant.data_utils import save_grad_data, save_inp_oup_data
 def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: torch.Tensor,
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.01, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
-                         warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0):
+                         warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
+                         multi_gpu: bool = False):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -27,6 +29,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     :param act_quant: use activation quantization or not.
     :param lr: learning rate for act delta learning
     :param p: L_p norm minimization
+    :param multi_gpu: use multi-GPU or not, if enabled, we should sync the gradients
     """
     model.set_quant_state(False, False)
     block.set_quant_state(True, act_quant)
@@ -87,8 +90,10 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         out_quant = block(cur_inp)
 
         err = loss_func(out_quant, cur_out, cur_grad)
-
         err.backward(retain_graph=True)
+        if multi_gpu:
+            for p in opt_params:
+                link.allreduce(p.grad)
         optimizer.step()
         if scheduler:
             scheduler.step()
