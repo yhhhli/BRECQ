@@ -4,7 +4,6 @@ import torchvision
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-
 def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: int = 64, workers: int = 4,
                         dist_sample: bool = False):
     print('==> Using Pytorch Dataset')
@@ -14,7 +13,7 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    torchvision.set_image_backend('accimage')
+    #torchvision.set_image_backend('accimage')
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -23,12 +22,14 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
             transforms.ToTensor(),
             normalize,
         ]))
-    val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
-                transforms.Resize(256),
-                transforms.CenterCrop(input_size),
-                transforms.ToTensor(),
-                normalize,
-            ])),
+    val_dataset = datasets.ImageFolder(
+        valdir,
+        transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(input_size),
+            transforms.ToTensor(),
+            normalize,
+        ]))
 
     if dist_sample:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -41,7 +42,6 @@ def build_imagenet_data(data_path: str = '', input_size: int = 224, batch_size: 
         train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
         num_workers=workers, pin_memory=True, sampler=train_sampler)
     val_loader = torch.utils.data.DataLoader(
-        batch_size=batch_size, shuffle=False,
+        val_dataset,batch_size=batch_size, shuffle=False,
         num_workers=workers, pin_memory=True, sampler=val_sampler)
-
     return train_loader, val_loader
