@@ -65,7 +65,7 @@ def finalize():
 
 class nn(object):
     SyncBatchNorm2d = torch.nn.BatchNorm2d
-    logger.info("You are using fake SyncBatchNorm2d who is actually the official BatchNorm2d")
+    print("You are using fake SyncBatchNorm2d who is actually the official BatchNorm2d")
 
 
 class syncbnVarMode_t(object):
