@@ -16,7 +16,7 @@ Pytorch implementation of BRECQ, ICLR 2021
 
 We release the code for multi-GPU reconstruction. 
 
-Note that this cannot be simply performed with `torch.nn.DataParallel` or DDP. To synchorize the gradients, activation scale, etc., we have to manully call `torch.cuda.allreduce`. 
+Note that this cannot be simply performed with `torch.nn.DataParallel` or DDP. To synchorize the gradients, activation scale, etc., we have to manully call `torch.distributed.allreduce`. 
 
 The first step is to initialize the distributed envrionment, and then use distributed sampler for data loading. 
 
